@@ -7,4 +7,5 @@ streamlit==1.33.0
 # Backend
 numpy
 phitter
-llama_index
+llama-index
+llama-index-llms-together
