@@ -1,7 +1,117 @@
-import streamlit as st
+import os
+
+import numpy as np
 import pandas as pd
+import phitter
+from llama_index.core.agent.react import ReActAgent
+from llama_index.core.tools import FunctionTool
+from llama_index.llms.together import TogetherLLM
+import dotenv
+import streamlit as st
 import requests
 import io
+
+# Inicializar el estado de la aplicación
+if "page" not in st.session_state:
+    st.session_state.page = "main"
+
+dotenv.load_dotenv(dotenv.find_dotenv())
+os.environ["TOGETHER_API_KEY"] = os.getenv("TOGETHER_API_KEY")
+
+
+def get_column_data(column_name: str) -> list[float]:
+    """
+    Gets the data from a specific column of the global DataFrame.
+    """
+    df = st.session_state.data
+    print(df.head())
+    return df[column_name].tolist()
+
+
+def fit_distributions_to_data(data: list[float]) -> float:
+    """
+    Fit the best probability distribution to a dataset
+    """
+    print(data)
+    phitter_cont = phitter.PHITTER(data=data)
+    phitter_cont.fit(n_workers=2)
+    id_distribution = phitter_cont.best_distribution["id"]
+    parameters = phitter_cont.best_distribution["parameters"]
+    parameters_str = ", ".join([f"{k}: {v:.4g}" for k, v in parameters.items()])
+    return (
+        f"The best distribution is {id_distribution} with parameters {parameters_str}"
+    )
+
+
+def main_backend(query: str):
+
+    get_column_tool = FunctionTool.from_defaults(
+        fn=get_column_data,
+        name="get_column_data",
+        description="Gets the data from a specific column of the global DataFrame.",
+    )
+    fit_distribution_tool = FunctionTool.from_defaults(
+        fn=fit_distributions_to_data,
+        name="fit_distribution",
+        description="Find the best probability distribution to a dataset and returns the distribution name and parameters.",
+    )
+
+    llm = TogetherLLM(model="meta-llama/Llama-3-70b-chat-hf")
+
+    tools = [get_column_tool, fit_distribution_tool]
+    agent = ReActAgent.from_tools(tools, llm=llm, verbose=False)
+
+    response = agent.chat(query)
+
+    return response
+
+
+# Select Page to Go
+def go_to_page0():
+    st.session_state.page = "main"
+
+
+def chatbot_page():
+
+    df = st.session_state.data
+
+    with st.container():
+        # Send to next page
+        col5, col6 = st.columns([2, 3])
+
+        with col6:
+            st.button("Return to Load Data", on_click=go_to_page0, type="primary")
+
+    col, col0 = st.columns([1, 5])
+    with col0:
+        st.title("Phitter AI Assistant👋")
+
+    # Store LLM generated responses
+    if "messages" not in st.session_state:
+        st.session_state.messages = [
+            {"role": "assistant", "content": "How can I help you?"}
+        ]
+
+    # Display or clear chat messages
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    if prompt := st.chat_input("What do you want to do with Phitter?"):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+            question = prompt
+
+    # Generate a new response if last message is not from assistant
+    if st.session_state.messages[-1]["role"] != "assistant":
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                placeholder = st.empty()
+                full_response = main_backend(question)
+                placeholder.markdown(full_response)
+        message = {"role": "assistant", "content": full_response}
+        st.session_state.messages.append(message)
 
 
 def go_to_page1(df: pd.DataFrame):
@@ -163,3 +273,10 @@ def loading_data_page():
 
             else:
                 st.markdown(":red[**Sorry!😭 We were not able to access to your url**]")
+
+
+# Controlar qué página se muestra
+if st.session_state.page == "main":
+    loading_data_page()
+elif st.session_state.page == "page1":
+    chatbot_page()

@@ -1,5 +1,9 @@
 import streamlit as st
 import pandas as pd
+import sys
+
+sys.path.append("../backend")
+import kernel
 
 
 # Select Page to Go
@@ -43,12 +47,8 @@ def chatbot_page():
     if st.session_state.messages[-1]["role"] != "assistant":
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
-                response = "Hola"  # Backend Here
                 placeholder = st.empty()
-                full_response = df.loc[0, 1]
-                for item in response:
-                    full_response += item
-                    placeholder.markdown(full_response)
+                full_response = kernel.main_backend(df, question)
                 placeholder.markdown(full_response)
         message = {"role": "assistant", "content": full_response}
         st.session_state.messages.append(message)

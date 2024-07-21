@@ -1,25 +1,101 @@
 import streamlit as st
-import pandas as pd
 import requests
 import io
+import os
+import numpy as np
+import pandas as pd
+import phitter
+from llama_index.core.agent.react import ReActAgent
+from llama_index.core.tools import FunctionTool
+from llama_index.llms.together import TogetherLLM
+import dotenv
+
+dotenv.load_dotenv(dotenv.find_dotenv())
+os.environ["TOGETHER_API_KEY"] = os.getenv("TOGETHER_API_KEY")
 
 
-def go_to_page1(df: pd.DataFrame):
+def get_column_data(column_name: str) -> list[float]:
+    """
+    Gets the data from a specific column of the global DataFrame.
+    """
+    global df
+    return df[column_name].tolist()
+
+
+def fit_distributions_to_data(data: list[float]) -> float:
+    """
+    Fit the best probability distribution to a dataset
+    """
+    global phitter_cont
+    phitter_cont = phitter.PHITTER(data=data)
+    phitter_cont.fit(n_workers=2)
+    id_distribution = phitter_cont.best_distribution["id"]
+    parameters = phitter_cont.best_distribution["parameters"]
+    parameters_str = ", ".join([f"{k}: {v:.4g}" for k, v in parameters.items()])
+    return (
+        f"The best distribution is {id_distribution} with parameters {parameters_str}"
+    )
+
+
+def plot_histogram():
+    """
+    Fit the best probability distribution to a dataset
+    """
+    global phitter_cont
+    phitter_cont.plot_histogram()
+    return "showing histogram ..."
+
+
+def main_backend(query: str):
+    global df
+    print(df.head(2))
+    get_column_tool = FunctionTool.from_defaults(
+        fn=get_column_data,
+        name="get_column_data",
+        description="Gets the data from a specific column of the global DataFrame.",
+    )
+    fit_distribution_tool = FunctionTool.from_defaults(
+        fn=fit_distributions_to_data,
+        name="fit_distribution",
+        description="Find the best probability distribution to a dataset and returns the distribution name and parameters.",
+    )
+    plot_histogram_tool = FunctionTool.from_defaults(
+        fn=plot_histogram,
+        name="plot_histogram",
+        description="Plot hitogram to the current phitter process",
+    )
+
+    llm = TogetherLLM(model="meta-llama/Llama-3-70b-chat-hf", temperature=0)
+
+    tools = [get_column_tool, fit_distribution_tool, plot_histogram_tool]
+    agent = ReActAgent.from_tools(tools, llm=llm, verbose=False)
+
+    response = agent.chat(query)
+
+    return response
+
+
+# Inicializar el estado de la aplicación
+if "page" not in st.session_state:
+    st.session_state.page = "main"
+
+
+def go_to_page1():
     st.session_state.page = "page1"
-    st.session_state.data = df
 
 
-def send_next_page(df: pd.DataFrame):
+def send_next_page():
     # Send to AI Assistant page
     st.markdown(
         "If the above data is correct, click on :green[NEXT] to use the AI assistant for Phitter"
     )
     col5, col6 = st.columns([2, 3])
     with col6:
-        st.button("Next", on_click=lambda: go_to_page1(df), type="primary")
+        st.button("Next", on_click=go_to_page1, type="primary")
 
 
 def loading_data_page():
+    global df
     col, col0 = st.columns([1, 5])
     with col0:
         st.title("Welcome to Phitter AI! 👋")
@@ -63,7 +139,7 @@ def loading_data_page():
             ):
                 df = pd.read_csv(upload_file)
                 st.dataframe(df.head())
-                send_next_page(df)
+                send_next_page()
             elif (
                 upload_file.type == "text/csv"
                 or upload_file.type == "text/plain"
@@ -71,7 +147,7 @@ def loading_data_page():
             ):
                 df = pd.read_csv(upload_file, header=None)
                 st.dataframe(df.head())
-                send_next_page(df)
+                send_next_page()
             elif (
                 upload_file.type
                 == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -99,11 +175,11 @@ def loading_data_page():
                 ):
                     df = pd.read_excel(upload_file)
                     st.dataframe(df.head())
-                    send_next_page(df)
+                    send_next_page()
                 else:
                     df = pd.read_excel(upload_file, sheet_name=user_input)
                     st.dataframe(df.head())
-                    send_next_page(df)
+                    send_next_page()
             elif (
                 upload_file.type
                 == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -132,11 +208,11 @@ def loading_data_page():
                 ):
                     df = pd.read_excel(upload_file, header=None)
                     st.dataframe(df.head())
-                    send_next_page(df)
+                    send_next_page()
                 else:
                     df = pd.read_excel(upload_file, header=None, sheet_name=user_input)
                     st.dataframe(df.head())
-                    send_next_page(df)
+                    send_next_page()
 
             else:
                 st.markdown(
@@ -159,7 +235,67 @@ def loading_data_page():
                     df = pd.read_csv(file_data, header=None)
                     st.dataframe(df.head())
 
-                send_next_page(df)
+                send_next_page()
 
             else:
                 st.markdown(":red[**Sorry!😭 We were not able to access to your url**]")
+
+
+# Select Page to Go
+def go_to_page0():
+    st.session_state.page = "main"
+
+
+def chatbot_page():
+
+    global df
+
+    with st.container():
+        # Send to next page
+        col5, col6 = st.columns([2, 3])
+
+        with col6:
+            st.button("Return to Load Data", on_click=go_to_page0, type="primary")
+
+    col, col0 = st.columns([1, 5])
+    with col0:
+        st.title("Phitter AI Assistant👋")
+
+    # Store LLM generated responses
+    if "messages" not in st.session_state:
+        st.session_state.messages = [
+            {"role": "assistant", "content": "How can I help you?"}
+        ]
+
+    # Display or clear chat messages
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    if prompt := st.chat_input("What do you want to do with Phitter?"):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+            question = prompt
+
+    # Generate a new response if last message is not from assistant
+    if st.session_state.messages[-1]["role"] != "assistant":
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                print(question)
+                response = main_backend(question)
+                placeholder = st.empty()
+                full_response = ""
+                for item in response:
+                    full_response += item
+                    placeholder.markdown(full_response)
+                placeholder.markdown(full_response)
+        message = {"role": "assistant", "content": full_response}
+        st.session_state.messages.append(message)
+
+
+# Controlar qué página se muestra
+if st.session_state.page == "main":
+    loading_data_page()
+elif st.session_state.page == "page1":
+    chatbot_page()
