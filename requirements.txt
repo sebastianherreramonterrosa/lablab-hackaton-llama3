@@ -1,4 +1,10 @@
-llama_index
+#Both
 pandas
+
+# Frontend
+requests==2.29.0
+streamlit==1.33.0
+# Backend
 numpy
 phitter
+llama_index
