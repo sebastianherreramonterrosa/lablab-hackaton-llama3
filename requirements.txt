@@ -1,0 +1,4 @@
+llama_index
+pandas
+numpy
+phitter
