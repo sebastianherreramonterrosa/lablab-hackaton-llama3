@@ -24,8 +24,8 @@ def get_column_data(column_name: str) -> list[float]:
     Gets the data from a specific column of the global DataFrame.
     """
     df = st.session_state.data
-    df.columns = df.iloc[0]
-    df = df[1:].reset_index(drop=True)
+    # df.columns = df.iloc[0]
+    # df = df[1:].reset_index(drop=True)
     print("yyy", df)
     return df[column_name].tolist()
 
