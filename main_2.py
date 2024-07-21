@@ -24,23 +24,33 @@ def get_column_data(column_name: str) -> list[float]:
     Gets the data from a specific column of the global DataFrame.
     """
     df = st.session_state.data
-    print(df.head())
+    df.columns = df.iloc[0]
+    df = df[1:].reset_index(drop=True)
+    print("yyy", df)
     return df[column_name].tolist()
 
 
-def fit_distributions_to_data(data: list[float]) -> float:
+def fit_distributions_to_data(
+    data: list[float],
+    fit_type="continuous",
+    num_bins=None,
+    confidence_level=0.95,
+) -> float:
     """
     Fit the best probability distribution to a dataset
     """
-    print(data)
-    phitter_cont = phitter.PHITTER(data=data)
+    global phitter_cont
+    phitter_cont = phitter.PHITTER(
+        data=data,
+        fit_type=fit_type,
+        num_bins=num_bins,
+        confidence_level=confidence_level,
+    )
     phitter_cont.fit(n_workers=2)
     id_distribution = phitter_cont.best_distribution["id"]
     parameters = phitter_cont.best_distribution["parameters"]
     parameters_str = ", ".join([f"{k}: {v:.4g}" for k, v in parameters.items()])
-    return (
-        f"The best distribution is {id_distribution} with parameters {parameters_str}"
-    )
+    return f"The best distribution is {id_distribution} with parameters {parameters_str}"
 
 
 def main_backend(query: str):
@@ -53,9 +63,8 @@ def main_backend(query: str):
     fit_distribution_tool = FunctionTool.from_defaults(
         fn=fit_distributions_to_data,
         name="fit_distribution",
-        description="Find the best probability distribution to a dataset and returns the distribution name and parameters.",
+        description="Find the best probability distribution to a dataset and returns the distribution name and parameters. By default fit_type is continuous. By default num_bins is None. By default confidence_level is 0.95",
     )
-
     llm = TogetherLLM(model="meta-llama/Llama-3-70b-chat-hf")
 
     tools = [get_column_tool, fit_distribution_tool]
@@ -63,7 +72,7 @@ def main_backend(query: str):
 
     response = agent.chat(query)
 
-    return response
+    return response.response
 
 
 # Select Page to Go
@@ -88,9 +97,7 @@ def chatbot_page():
 
     # Store LLM generated responses
     if "messages" not in st.session_state:
-        st.session_state.messages = [
-            {"role": "assistant", "content": "How can I help you?"}
-        ]
+        st.session_state.messages = [{"role": "assistant", "content": "How can I help you?"}]
 
     # Display or clear chat messages
     for message in st.session_state.messages:
@@ -108,6 +115,7 @@ def chatbot_page():
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
                 placeholder = st.empty()
+                print("xxx", question)
                 full_response = main_backend(question)
                 placeholder.markdown(full_response)
         message = {"role": "assistant", "content": full_response}
@@ -121,9 +129,7 @@ def go_to_page1(df: pd.DataFrame):
 
 def send_next_page(df: pd.DataFrame):
     # Send to AI Assistant page
-    st.markdown(
-        "If the above data is correct, click on :green[NEXT] to use the AI assistant for Phitter"
-    )
+    st.markdown("If the above data is correct, click on :green[NEXT] to use the AI assistant for Phitter")
     col5, col6 = st.columns([2, 3])
     with col6:
         st.button("Next", on_click=lambda: go_to_page1(df), type="primary")
@@ -145,9 +151,7 @@ def loading_data_page():
 
         # First Column
         with col1:
-            url_input = st.text_input(
-                "Write down the :green[***URL***] where we can find your data"
-            )
+            url_input = st.text_input("Write down the :green[***URL***] where we can find your data")
 
         # Second Column
         with col2:
@@ -158,35 +162,19 @@ def loading_data_page():
 
         st.markdown("**or**")
 
-        upload_file = st.file_uploader(
-            "Upload your :green[***CSV***], :green[***TXT***] or :green[***XLSX***] file"
-        )
+        upload_file = st.file_uploader("Upload your :green[***CSV***], :green[***TXT***] or :green[***XLSX***] file")
         # Checkbox to act as the switch
-        with_headers = st.checkbox(
-            "Does your data have the **First Row** as a **Header**?"
-        )
+        with_headers = st.checkbox("Does your data have the **First Row** as a **Header**?")
         if upload_file:
-            if (
-                upload_file.type == "text/csv"
-                or upload_file.type == "text/plain"
-                and with_headers
-            ):
+            if upload_file.type == "text/csv" or upload_file.type == "text/plain" and with_headers:
                 df = pd.read_csv(upload_file)
                 st.dataframe(df.head())
                 send_next_page(df)
-            elif (
-                upload_file.type == "text/csv"
-                or upload_file.type == "text/plain"
-                and with_headers == False
-            ):
+            elif upload_file.type == "text/csv" or upload_file.type == "text/plain" and with_headers == False:
                 df = pd.read_csv(upload_file, header=None)
                 st.dataframe(df.head())
                 send_next_page(df)
-            elif (
-                upload_file.type
-                == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                and with_headers
-            ):
+            elif upload_file.type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" and with_headers:
                 # Dive into two columns
                 col1, col2 = st.columns([5, 1])
 
@@ -204,9 +192,7 @@ def loading_data_page():
                     submit_button = st.button("Update")
 
                 # Read According to User Choice
-                if submit_button == False or (
-                    submit_button == True and user_input == ""
-                ):
+                if submit_button == False or (submit_button == True and user_input == ""):
                     df = pd.read_excel(upload_file)
                     st.dataframe(df.head())
                     send_next_page(df)
@@ -214,11 +200,7 @@ def loading_data_page():
                     df = pd.read_excel(upload_file, sheet_name=user_input)
                     st.dataframe(df.head())
                     send_next_page(df)
-            elif (
-                upload_file.type
-                == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                and with_headers == False
-            ):
+            elif upload_file.type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" and with_headers == False:
 
                 # Dive into two columns
                 col3, col4 = st.columns([5, 1])
@@ -237,9 +219,7 @@ def loading_data_page():
                     submit_button = st.button("Update")
 
                 # Read According to User Choice
-                if submit_button == False or (
-                    submit_button == True and user_input == ""
-                ):
+                if submit_button == False or (submit_button == True and user_input == ""):
                     df = pd.read_excel(upload_file, header=None)
                     st.dataframe(df.head())
                     send_next_page(df)
@@ -249,9 +229,7 @@ def loading_data_page():
                     send_next_page(df)
 
             else:
-                st.markdown(
-                    ":red[File type not recognized. Please upload the correct formats: ] :green[***CSV***] :red[,] :green[***TXT***] :red[or] :green[***XLSX***].\n\n:red[Please try again.]"
-                )
+                st.markdown(":red[File type not recognized. Please upload the correct formats: ] :green[***CSV***] :red[,] :green[***TXT***] :red[or] :green[***XLSX***].\n\n:red[Please try again.]")
         elif url_input != "" and url_button == True:
             # Realizar la solicitud GET
             response = requests.get(url_input)
